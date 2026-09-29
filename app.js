@@ -496,9 +496,9 @@
   }
 
   async function scanCarImage(base64Image) {
-    const apiKey = window.HF_API_TOKEN || localStorage.getItem('HF_API_TOKEN');
+    const apiKey = window.GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY');
     if (!apiKey) {
-      return { isCar: false, error: 'Missing Hugging Face API token. Set window.HF_API_TOKEN or localStorage.HF_API_TOKEN.' };
+      return { isCar: false, error: 'Missing Gemini API key. Set window.GEMINI_API_KEY or localStorage.GEMINI_API_KEY.' };
     }
 
     const rawBase64 = normalizeBase64Image(base64Image);
@@ -506,49 +506,43 @@
       return { isCar: false, error: 'No image data was provided for scanning.' };
     }
 
-    const binary = atob(rawBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
-
     console.log('Image payload size:', rawBase64.length);
 
-    const url = 'https://router.huggingface.co/hf-inference/models/google/vit-base-patch16-224';
-    const response = await fetch(url, {
+    const response = await fetch('/api/scan-car', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/octet-stream'
+        'Content-Type': 'application/json'
       },
-      body: bytes
+      body: JSON.stringify({
+        image: rawBase64,
+        apiKey
+      })
     });
 
     if (!response.ok) {
-      const errorPayload = await response.text();
-      throw new Error(`Hugging Face request failed: ${response.status} ${errorPayload}`);
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload?.error || `Gemini request failed: ${response.status}`);
     }
 
     const data = await response.json();
     console.log('Vision API Response:', data);
 
-    const predictions = Array.isArray(data) ? data : data?.[0] ? data : [];
-    const bestPrediction = Array.isArray(predictions) && predictions.length ? predictions.reduce((best, candidate) => Number(candidate.score) > Number(best.score) ? candidate : best) : null;
-
-    const detectedLabel = bestPrediction?.label || 'unknown';
-    const confidenceScore = Number(bestPrediction?.score || 0) * 100;
-    const normalizedLabel = String(detectedLabel).toLowerCase();
-    const isCar = normalizedLabel.includes('car') || normalizedLabel.includes('vehicle') || normalizedLabel.includes('truck') || normalizedLabel.includes('bus') || normalizedLabel.includes('sedan') || normalizedLabel.includes('coupe') || normalizedLabel.includes('suv') || normalizedLabel.includes('hatchback') || normalizedLabel.includes('van');
-
-    if (!isCar) {
-      return { isCar: false, detectedLabel, confidenceScore, reasoning: `Model classified the image as ${detectedLabel}.` };
+    if (!data || data.isCar === false) {
+      return {
+        isCar: false,
+        confidenceScore: Number(data?.confidenceScore || 0),
+        reasoning: data?.reasoning || 'No vehicle identified in the image.'
+      };
     }
 
     return {
       isCar: true,
-      detectedLabel,
-      confidenceScore,
-      reasoning: `Detected vehicle label: ${detectedLabel} with ${(confidenceScore || 0).toFixed(1)}% confidence.`
+      make: String(data.make || 'Unknown').trim(),
+      model: String(data.model || 'Unknown').trim(),
+      estimatedYear: String(data.estimatedYear || 'Unknown'),
+      rarity: ['Common', 'Rare', 'Exotic'].includes(data.rarity) ? data.rarity : 'Common',
+      confidenceScore: Number(data.confidenceScore || 0),
+      reasoning: String(data.reasoning || 'Vehicle detected using visual cues.').trim()
     };
   }
 
