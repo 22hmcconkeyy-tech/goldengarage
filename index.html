@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#131512" />
+    <meta name="description" content="A field guide for finding, scanning, and collecting cars." />
+    <title>Carscout - Field Scanner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Main navigation">
+        <a class="brand" href="#scanner" aria-label="Carscout home">
+          <span class="brand-mark">C<span>.</span></span>
+          <span class="brand-copy"><strong>CARSCOUT</strong><small>FIELD SYSTEM 02</small></span>
+        </a>
+        <div class="nav-label">FIELD KIT</div>
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="scanner"><span class="nav-icon">◎</span><span>Scanner</span><kbd>01</kbd></button>
+          <button class="nav-item" data-view="garage"><span class="nav-icon">▦</span><span>My garage</span><kbd id="garageCount">00</kbd></button>
+          <button class="nav-item" data-view="shop"><span class="nav-icon">✦</span><span>Item shop</span><kbd>48H</kbd></button>
+          <button class="nav-item" data-view="leaderboard"><span class="nav-icon">↗</span><span>Leaderboard</span><kbd>03</kbd></button>
+          <button class="nav-item" data-view="quests"><span class="nav-icon">✳</span><span>Quests</span><kbd id="questCount">04</kbd></button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="season-chip"><span class="live-dot"></span><span>SEASON 04</span><span class="season-divider"></span><span>ACTIVE</span></div>
+          <div class="profile-mini">
+            <div class="avatar avatar-self">M</div>
+            <div class="profile-mini-copy"><strong>Nightshift</strong><small id="profileLevel">LEVEL 01</small></div>
+            <button class="icon-button" id="profileButton" aria-label="Player profile" title="Player profile">···</button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="main-column">
+        <header class="topbar">
+          <div class="mobile-brand"><span class="brand-mark">C<span>.</span></span><span>CARSCOUT</span></div>
+          <div class="topbar-context"><span class="context-dot"></span><span id="topbarLabel">FIELD SCANNER</span><span class="topbar-separator">/</span><span id="todayLabel">MON, SEP 28</span></div>
+          <div class="topbar-right">
+            <div class="xp-mini"><span class="xp-star">✳</span><span id="topLevel">LVL 01</span><span class="xp-mini-track"><i id="topXpFill"></i></span></div>
+            <div class="scrap-pill" aria-label="Scraps"><span>✦</span><strong id="scrapsCount">0</strong><small>SCRAPS</small></div>
+            <div class="ticket-pill"><span class="ticket-icon">▣</span><span id="ticketCount">15</span><span class="ticket-slash">/15</span><span class="ticket-divider"></span><span class="ticket-timer" id="ticketTimer">FULL</span></div>
+          </div>
+        </header>
+
+        <main id="mainContent">
+          <section class="view-panel active" id="view-scanner" aria-labelledby="scannerTitle">
+            <div class="page-heading scanner-heading">
+              <div><div class="eyebrow"><span class="eyebrow-line"></span>YOUR EYES ON THE STREET</div><h1 id="scannerTitle">Find your <em>next one.</em></h1><p>Every make has a story. Point, scan, and add it to the record.</p></div>
+              <div class="heading-stamp"><span>LOCAL TIME</span><strong id="clockLabel">--:--</strong><small>FIELD LOG · <span id="dateLong">TODAY</span></small></div>
+            </div>
+
+            <div class="scanner-layout">
+              <section class="camera-card" aria-label="Car camera scanner">
+                <div class="camera-topline"><div class="camera-status"><span class="status-dot" id="cameraStatusDot"></span><span id="cameraStatus">SCANNER STANDBY</span></div><div class="camera-coords" id="cameraCoords">40° 43' N&nbsp;&nbsp; 73° 59' W</div></div>
+                <div class="camera-stage" id="cameraStage">
+                  <video id="cameraVideo" autoplay playsinline muted aria-label="Live camera preview"></video>
+                  <div class="stage-art" id="stageArt" aria-hidden="true">
+                    <div class="stage-car-light"></div>
+                    <div class="scan-frame frame-a"></div><div class="scan-frame frame-b"></div>
+                    <div class="scan-crosshair"><span></span><span></span></div>
+                    <div class="stage-guide"><span>ALIGN VEHICLE WITHIN FRAME</span><i></i></div>
+                    <div class="stage-number">01 <span>/</span> 04</div>
+                    <div class="stage-side-label">OPTICAL<br />IDENTIFICATION</div>
+                  </div>
+                  <div class="stage-loading" id="scanLoading"><span class="loading-ring"></span><strong>READING THE DETAILS</strong><small>Matching silhouette · checking specifications</small></div>
+                  <div class="camera-error" id="cameraError" hidden></div>
+                  <div class="stage-corner stage-corner-tl"></div><div class="stage-corner stage-corner-tr"></div><div class="stage-corner stage-corner-bl"></div><div class="stage-corner stage-corner-br"></div>
+                  <div class="live-badge" id="liveBadge"><span></span>LIVE</div>
+                </div>
+                <div class="camera-meta"><span><b class="meta-icon">⌖</b><span id="locationText">LOCATION · NOT SHARED</span></span><span><b class="meta-icon">◷</b>DAYLIGHT MODE</span><span class="camera-meta-right">SIMULATED RECOGNITION</span></div>
+                <div class="camera-actions">
+                  <button class="button button-secondary" id="cameraButton"><span class="button-icon">◉</span><span>Enable camera</span></button>
+                  <button class="button button-primary" id="scanButton" disabled><span>Capture &amp; scan</span><span class="button-arrow">↗</span></button>
+                </div>
+                <div class="camera-footnote"><span class="footnote-mark">i</span>Recognition is simulated locally. Your captured photo stays in this browser.</div>
+              </section>
+
+              <aside class="scanner-rail">
+                <section class="ticket-card">
+                  <div class="rail-title"><span>SCAN ALLOWANCE</span><span class="rail-title-mark">01 — 03</span></div>
+                  <div class="ticket-count-row"><strong id="ticketBig">15</strong><span>of 15<br />available</span><span class="ticket-stack-icon">▣</span></div>
+                  <div class="ticket-meter" id="ticketMeter" aria-label="15 of 15 scan tickets available"></div>
+                  <div class="ticket-refill"><span><i class="refill-dot"></i> NEXT REFILL</span><strong id="refillCountdown">FULL</strong></div>
+                  <div class="rail-rule"></div>
+                  <div class="ticket-note">One ticket is restored every <b>15 minutes.</b></div>
+                </section>
+
+                <section class="field-card">
+                  <div class="rail-title"><span>FIELD NOTES</span><span class="rail-title-mark">TODAY</span></div>
+                  <div class="field-stat-row"><span>Cars collected</span><strong id="todayScans">0 <small>/ 3</small></strong></div>
+                  <div class="field-progress"><i id="todayProgress"></i></div>
+                  <div class="field-stat-row"><span>Garage score</span><strong id="garageScoreSmall">000</strong></div>
+                  <div class="field-stat-row"><span>Collector rank</span><strong id="rankSmall">ROOKIE</strong></div>
+                  <button class="text-link" data-view-link="quests">View today's quests <span>↗</span></button>
+                </section>
+
+                <div class="scanner-tip"><div class="tip-mark">✳</div><div><span>SCOUT TIP</span><p>Look for badges, vents, and body lines. Small details make a big difference.</p></div></div>
+              </aside>
+            </div>
+
+            <section class="recent-section"><div class="section-head"><div><div class="eyebrow"><span class="eyebrow-line"></span>THE LATEST FINDS</div><h2>Fresh from the field</h2></div><button class="text-link" data-view-link="garage">Open garage <span>↗</span></button></div><div class="recent-list" id="recentList"><div class="recent-empty"><span>◎</span><div><strong>No sightings yet</strong><small>Your first scan will show up here.</small></div></div></div></section>
+          </section>
+
+          <section class="view-panel" id="view-garage" aria-labelledby="garageTitle">
+            <div class="page-heading subpage-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>PERSONAL COLLECTION</div><h1 id="garageTitle">Your <em>garage.</em></h1><p>Every sighting, filed and scored. This is your collection.</p></div><div class="garage-total"><strong id="garageTotal">00</strong><span>CARS IN<br />COLLECTION</span></div></div>
+            <div class="garage-toolbar"><div class="rarity-filters" id="rarityFilters" role="group" aria-label="Filter cars by rarity"><button class="filter-chip active" data-rarity="All">All <span id="filterAllCount">0</span></button><button class="filter-chip" data-rarity="Common">Common</button><button class="filter-chip" data-rarity="Uncommon">Uncommon</button><button class="filter-chip" data-rarity="Rare">Rare</button><button class="filter-chip" data-rarity="Exotic">Exotic</button><button class="filter-chip" data-rarity="Legendary">Legendary</button></div><div class="garage-sort"><span>SORT</span><select id="garageSort" aria-label="Sort garage"><option value="newest">Newest first</option><option value="score">Highest score</option><option value="horsepower">Horsepower</option></select></div></div>
+            <div class="garage-grid" id="garageGrid"></div>
+          </section>
+
+          <section class="view-panel" id="view-shop" aria-labelledby="shopTitle">
+            <div class="page-heading subpage-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>ROTATING STOCK · LOCAL MARKET</div><h1 id="shopTitle">The <em>item shop.</em></h1><p>Trade time in the field for a car you have your eye on.</p></div><div class="shop-balance"><strong id="shopBalanceLarge">0</strong><span>SCRAPS<br />AVAILABLE</span></div></div>
+            <section class="daily-pack" aria-label="Daily free scrap pack">
+              <div class="pack-stamp"><span>✦</span><small>FIELD<br />SUPPLY</small></div>
+              <div class="pack-copy"><span class="pack-kicker" id="dailyPackState">ONE FREE PACK · READY NOW</span><h2>A little something for the road.</h2><p>Open one free pack each day. The big hauls are harder to come by.</p><small>RANDOM DROP · 100–1,000 SCRAPS</small></div>
+              <button class="button button-primary" id="claimPackButton">OPEN FREE PACK</button>
+            </section>
+            <div class="shop-inventory-head"><div><div class="eyebrow"><span class="eyebrow-line"></span>FOUR HAND-PICKED FINDS</div><h2>Available cars</h2></div><div class="shop-refresh"><span>STOCK REFRESHES AT MIDNIGHT</span><strong id="shopRefreshCountdown">--D --H --M</strong></div></div>
+            <div class="shop-stock-grid" id="shopStock"></div>
+          </section>
+
+          <section class="view-panel" id="view-leaderboard" aria-labelledby="leaderboardTitle">
+            <div class="page-heading subpage-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>THE SCOUTING CIRCUIT</div><h1 id="leaderboardTitle">Top <em>collectors.</em></h1><p>Garage score decides the order. Every find counts.</p></div><div class="leaderboard-season"><span class="live-dot"></span><span>SEASON 04</span><strong>WEEK 39</strong></div></div>
+            <div class="leaderboard-layout"><section class="leaderboard-card"><div class="leaderboard-head"><span>RANK / DRIVER</span><span>GARAGE</span><span>SCORE</span></div><div id="leaderboardRows"></div><div class="leaderboard-foot"><span>UPDATED JUST NOW</span><span>YOUR PLACE IS YOURS TO TAKE ↗</span></div></section><aside class="leader-side"><div class="leader-callout"><span class="callout-eyebrow">YOUR POSITION</span><div class="your-rank" id="yourRank">#—</div><div class="your-rank-name">Nightshift <span id="yourPlayerId">DRV-000-000</span></div><div class="leader-divider"></div><div class="leader-next"><span>POINTS TO NEXT PLACE</span><strong id="pointsToNext">—</strong></div></div><div class="leader-note"><span class="note-graphic">↗</span><p>Rarity wins the long game. Find something the rest of the city drives past.</p></div></aside></div>
+          </section>
+
+          <section class="view-panel" id="view-quests" aria-labelledby="questsTitle">
+            <div class="page-heading subpage-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span>YOUR NEXT MILESTONE</div><h1 id="questsTitle">The <em>long game.</em></h1><p>Small missions. Better instincts. More cars in the record.</p></div><div class="level-card"><div class="level-badge" id="levelBadge">01</div><div class="level-copy"><span>COLLECTOR LEVEL</span><strong id="levelName">CURIOUS</strong></div><div class="level-progress"><div><span id="levelXpText">0 / 500 XP</span><span id="levelPercent">0%</span></div><i><b id="levelXpFill"></b></i></div></div></div>
+            <div class="quest-reset-strip"><span><i class="refill-dot"></i>QUESTS REFRESH AUTOMATICALLY</span><span>DAILY <b id="dailyReset">--:--:--</b></span><span>WEEKLY <b id="weeklyReset">--D --:--</b></span></div>
+            <div class="quest-columns"><section class="quest-group"><div class="quest-group-head"><div><span class="quest-kicker">01 / EVERY DAY</span><h2>Daily route</h2></div><span class="quest-total" id="dailyQuestTotal">0 / 3 COMPLETE</span></div><div class="quest-list" id="dailyQuestList"></div></section><section class="quest-group weekly-group"><div class="quest-group-head"><div><span class="quest-kicker">02 / EVERY WEEK</span><h2>Long haul</h2></div><span class="quest-total" id="weeklyQuestTotal">0 / 3 COMPLETE</span></div><div class="quest-list" id="weeklyQuestList"></div></section></div>
+          </section>
+        </main>
+        <footer class="app-footer"><span>CARSCOUT <i>·</i> FIELD SYSTEM 02</span><span>BUILT FOR THE IN-BETWEEN <b>◉</b></span></footer>
+      </div>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation"><button class="mobile-nav-item active" data-view="scanner"><span>◎</span><small>Scan</small></button><button class="mobile-nav-item" data-view="garage"><span>▦</span><small>Garage</small></button><button class="mobile-nav-item" data-view="shop"><span>✦</span><small>Shop</small></button><button class="mobile-nav-item" data-view="leaderboard"><span>↗</span><small>Ranks</small></button><button class="mobile-nav-item" data-view="quests"><span>✳</span><small>Quests</small></button></nav>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <dialog class="car-dialog" id="carDialog"><button class="dialog-close" id="dialogClose" aria-label="Close details">×</button><div id="dialogContent"></div></dialog>
+  </body>
+</html>
