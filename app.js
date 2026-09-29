@@ -647,68 +647,14 @@
     $('dialogContent').innerHTML = `
       <div class="dialog-body">
         <div class="dialog-rarity">
-          <span><i class="rarity-dot Common"></i>MANUAL CONFIRMATION</span>
-          <strong>HELP US VERIFY</strong>
+          <span><i class="rarity-dot Common"></i>VEHICLE NOT DETECTED</span>
+          <strong>TRY AGAIN</strong>
         </div>
         <p class="dialog-location">${escapeHtml(reason)}</p>
-        <form data-manual-car-form>
-          <div class="manual-form-grid">
-            <label>
-              <span>Make</span>
-              <input name="make" type="text" placeholder="Toyota" required />
-            </label>
-            <label>
-              <span>Model</span>
-              <input name="model" type="text" placeholder="Corolla" required />
-            </label>
-            <label>
-              <span>Year</span>
-              <input name="year" type="number" min="1900" max="2035" value="${new Date().getFullYear()}" required />
-            </label>
-            <label>
-              <span>Color</span>
-              <input name="color" type="text" placeholder="Silver" />
-            </label>
-          </div>
-          <input type="hidden" name="photo" value="${escapeHtml(photoData)}" />
-          <button class="button button-primary" type="submit">Confirm vehicle</button>
-        </form>
+        <p class="dialog-location">The vehicle could not be detected. Please try another scan.</p>
       </div>
     `;
     $('carDialog').showModal();
-  }
-
-  function addManualVehicleFromForm(formData) {
-    const make = String(formData.get('make') || '').trim();
-    const model = String(formData.get('model') || '').trim();
-    const year = Number(formData.get('year') || new Date().getFullYear());
-    const color = String(formData.get('color') || 'Unknown').trim();
-    const photo = String(formData.get('photo') || '');
-    if (!make || !model) {
-      showToast('Please enter both the make and model to confirm the vehicle.');
-      return;
-    }
-    const fallbackCar = {
-      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      make,
-      model,
-      year,
-      rarity: 'Common',
-      garageScore: scoreFor({ rarity: 'Common', horsepower: 180, topSpeed: 120 }),
-      photo: photo || 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=900&q=80',
-      location: 'Manual confirm',
-      collectedAt: Date.now(),
-      horsepower: 180,
-      topSpeed: 120,
-      rarityScore: 38,
-      color
-    };
-    state.cars.push(fallbackCar);
-    saveState();
-    renderAll();
-    $('carDialog').close();
-    showToast(`${make} ${model} added to your garage.`);
-    showCarDetails(fallbackCar);
   }
 
   function showCarDetails(car) {
@@ -780,12 +726,6 @@
       const car = state.cars.find((item) => item.id === card.dataset.carId);
       if (car) showCarDetails(car);
     }
-  });
-  document.addEventListener('submit', (event) => {
-    const form = event.target.closest('[data-manual-car-form]');
-    if (!form) return;
-    event.preventDefault();
-    addManualVehicleFromForm(new FormData(form));
   });
   document.addEventListener('keydown', (event) => {
     if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-car-id]')) {
