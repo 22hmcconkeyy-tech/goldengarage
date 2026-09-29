@@ -475,10 +475,14 @@
 
   function normalizeBase64Image(base64Image) {
     if (!base64Image) return '';
-    if (base64Image.startsWith('data:image')) {
-      return base64Image.split(',')[1] || '';
+    const trimmed = String(base64Image).trim();
+    if (trimmed.startsWith('data:image')) {
+      return trimmed;
     }
-    return base64Image;
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    return `data:image/jpeg;base64,${trimmed.replace(/^data:image\/\w+;base64,/, '')}`;
   }
 
   async function scanCarImage(base64Image) {
@@ -487,19 +491,23 @@
       return { isCar: false, error: 'Missing OpenAI API key. Set window.OPENAI_API_KEY or localStorage.OPENAI_API_KEY.' };
     }
 
-    const cleanBase64 = normalizeBase64Image(base64Image);
-    if (!cleanBase64) {
+    const formattedImage = normalizeBase64Image(base64Image);
+    if (!formattedImage) {
       return { isCar: false, error: 'No image data was provided for scanning.' };
     }
 
+    console.log('Image payload size:', formattedImage.length);
+
     const systemPrompt = [
-      'You are a strict car identifier.',
-      'Only identify a vehicle if a car is clearly visible in the image.',
-      'If no car is present, return exactly: {"isCar": false}.',
-      'If a car is present, return valid JSON only with this exact schema:',
-      '{"isCar": true, "make": "", "model": "", "estimatedYear": 2020, "detectedColor": "", "rarity": "Common", "confidenceScore": 0.92}',
+      'You are an expert vehicle identification assistant.',
+      'Analyze the image carefully.',
+      'If a vehicle is visible—even partially, at an angle, or in imperfect lighting—identify it.',
+      'Only set isCar to false if the image contains no vehicle whatsoever, such as text, furniture, people, or a blank background.',
+      'Return JSON only with this exact schema:',
+      '{"isCar": true, "make": "", "model": "", "estimatedYear": 2020, "rarity": "Common", "confidenceScore": 88, "reasoning": ""}',
       'Allowed rarity values are only Common, Rare, or Exotic.',
-      'confidenceScore must be a number between 0 and 1.',
+      'confidenceScore must be a number between 0 and 100.',
+      'Include reasoning explaining the visual features used for identification.',
       'Do not include markdown, commentary, or extra keys.'
     ].join(' ');
 
@@ -518,11 +526,11 @@
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Identify the car shown in this image.' },
+              { type: 'text', text: 'Identify the vehicle shown in this image.' },
               {
                 type: 'image_url',
                 image_url: {
-                  url: `data:image/jpeg;base64,${cleanBase64}`
+                  url: formattedImage
                 }
               }
             ]
@@ -536,8 +544,10 @@
       throw new Error(`OpenAI Vision request failed: ${response.status} ${errorPayload}`);
     }
 
-    const payload = await response.json();
-    const rawText = payload.choices?.[0]?.message?.content || '{}';
+    const data = await response.json();
+    console.log('Vision API Response:', data);
+
+    const rawText = data.choices?.[0]?.message?.content || '{}';
     const parsed = JSON.parse(rawText);
 
     if (!parsed || parsed.isCar === false) {
@@ -549,9 +559,10 @@
       make: String(parsed.make || 'Unknown').trim(),
       model: String(parsed.model || 'Unknown').trim(),
       estimatedYear: Number(parsed.estimatedYear || new Date().getFullYear()),
-      detectedColor: String(parsed.detectedColor || 'Unknown').trim(),
       rarity: ['Common', 'Rare', 'Exotic'].includes(parsed.rarity) ? parsed.rarity : 'Common',
-      confidenceScore: Number(parsed.confidenceScore || 0.5)
+      confidenceScore: Number(parsed.confidenceScore || 50),
+      reasoning: String(parsed.reasoning || 'Vehicle detected using visual cues.').trim(),
+      detectedColor: String(parsed.detectedColor || 'Unknown').trim()
     };
   }
 
