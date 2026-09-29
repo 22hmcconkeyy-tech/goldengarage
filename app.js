@@ -473,6 +473,88 @@
     return new Promise((resolve) => window.setTimeout(resolve, duration));
   }
 
+  function normalizeBase64Image(base64Image) {
+    if (!base64Image) return '';
+    if (base64Image.startsWith('data:image')) {
+      return base64Image.split(',')[1] || '';
+    }
+    return base64Image;
+  }
+
+  async function scanCarImage(base64Image) {
+    const apiKey = window.OPENAI_API_KEY || localStorage.getItem('OPENAI_API_KEY');
+    if (!apiKey) {
+      return { isCar: false, error: 'Missing OpenAI API key. Set window.OPENAI_API_KEY or localStorage.OPENAI_API_KEY.' };
+    }
+
+    const cleanBase64 = normalizeBase64Image(base64Image);
+    if (!cleanBase64) {
+      return { isCar: false, error: 'No image data was provided for scanning.' };
+    }
+
+    const systemPrompt = [
+      'You are a strict car identifier.',
+      'Only identify a vehicle if a car is clearly visible in the image.',
+      'If no car is present, return exactly: {"isCar": false}.',
+      'If a car is present, return valid JSON only with this exact schema:',
+      '{"isCar": true, "make": "", "model": "", "estimatedYear": 2020, "detectedColor": "", "rarity": "Common", "confidenceScore": 0.92}',
+      'Allowed rarity values are only Common, Rare, or Exotic.',
+      'confidenceScore must be a number between 0 and 1.',
+      'Do not include markdown, commentary, or extra keys.'
+    ].join(' ');
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Identify the car shown in this image.' },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${cleanBase64}`
+                }
+              }
+            ]
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const errorPayload = await response.text();
+      throw new Error(`OpenAI Vision request failed: ${response.status} ${errorPayload}`);
+    }
+
+    const payload = await response.json();
+    const rawText = payload.choices?.[0]?.message?.content || '{}';
+    const parsed = JSON.parse(rawText);
+
+    if (!parsed || parsed.isCar === false) {
+      return { isCar: false };
+    }
+
+    return {
+      isCar: true,
+      make: String(parsed.make || 'Unknown').trim(),
+      model: String(parsed.model || 'Unknown').trim(),
+      estimatedYear: Number(parsed.estimatedYear || new Date().getFullYear()),
+      detectedColor: String(parsed.detectedColor || 'Unknown').trim(),
+      rarity: ['Common', 'Rare', 'Exotic'].includes(parsed.rarity) ? parsed.rarity : 'Common',
+      confidenceScore: Number(parsed.confidenceScore || 0.5)
+    };
+  }
+
   async function scanCar() {
     if (scanning || state.tickets < 1) {
       if (!state.tickets) showToast(`No scan tickets left. Next refill in ${ticketsUntilRefill()}.`);
@@ -492,38 +574,79 @@
     }
     scanButton.disabled = true;
     $('scanLoading').classList.add('show');
+    $('scanLoading').innerHTML = '<span class="loading-ring"></span><strong>Analyzing vehicle specs...</strong><small>Checking make, model, and color</small>';
     $('cameraStatus').textContent = 'ANALYZING IMAGE';
     const location = await getLocation();
-    await sleep(900);
-    const candidate = CATALOG[Math.floor(Math.random() * CATALOG.length)];
-    const rarity = rarityFor(candidate);
-    const collectedAt = Date.now();
-    const car = {
-      ...candidate,
-      id: `${collectedAt.toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      rarity,
-      garageScore: scoreFor({ ...candidate, rarity }),
-      photo,
-      location,
-      collectedAt
-    };
-    const existingCar = state.cars.find((item) => carIdentity(item) === carIdentity(car));
-    const duplicateScraps = existingCar ? DUPLICATE_SCRAPS[rarity] : 0;
-    const wasAtTicketCap = state.tickets === MAX_TICKETS;
-    if (!existingCar) state.cars.push(car);
-    state.tickets -= 1;
-    if (wasAtTicketCap) state.lastTicketAt = collectedAt;
-    state.scraps += SCAN_SCRAPS[rarity] + duplicateScraps;
-    const earnedXp = 45 + RARITY_INDEX[rarity] * 22;
-    state.xp += earnedXp;
-    saveState();
-    $('scanLoading').classList.remove('show');
-    $('cameraStatus').textContent = 'SCAN COMPLETE · FILED';
-    scanning = false;
-    renderAll();
-    const rewardText = `+${SCAN_SCRAPS[rarity]} scraps${duplicateScraps ? ` · +${duplicateScraps} duplicate salvage` : ''}`;
-    showToast(existingCar ? `${car.make} ${car.model} duplicate · ${rewardText}` : `${car.year} ${car.make} ${car.model} logged · ${rewardText} · +${earnedXp} XP`);
-    showCarDetails(existingCar || car);
+
+    try {
+      const detection = await scanCarImage(photo);
+      if (!detection || detection.isCar === false) {
+        $('scanLoading').classList.remove('show');
+        $('cameraStatus').textContent = 'NO VEHICLE DETECTED';
+        scanning = false;
+        scanButton.disabled = !cameraStream || state.tickets <= 0 || scanning;
+        showToast('No car was detected in the image. Try framing a clearer vehicle.');
+        return;
+      }
+
+      const detectedCar = {
+        make: detection.make || 'Unknown',
+        model: detection.model || 'Unknown',
+        year: Number(detection.estimatedYear || new Date().getFullYear()),
+        rarity: detection.rarity || 'Common',
+        confidenceScore: detection.confidenceScore || 0.5,
+        color: detection.detectedColor || 'Unknown',
+        horsepower: Math.max(80, Math.min(1000, Math.round((detection.confidenceScore || 0.5) * 500 + 120))),
+        topSpeed: Math.max(90, Math.min(230, Math.round((detection.confidenceScore || 0.5) * 120 + 80))),
+        rarityScore: detection.rarity === 'Exotic' ? 92 : detection.rarity === 'Rare' ? 68 : 38
+      };
+
+      const candidate = CATALOG.find((car) => car.make.toLowerCase() === detectedCar.make.toLowerCase() && car.model.toLowerCase() === detectedCar.model.toLowerCase()) || {
+        ...detectedCar,
+        image: photo,
+        rarityScore: detectedCar.rarityScore,
+        horsepower: detectedCar.horsepower,
+        topSpeed: detectedCar.topSpeed
+      };
+
+      const collectedAt = Date.now();
+      const car = {
+        ...candidate,
+        id: `${collectedAt.toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        rarity: detectedCar.rarity,
+        garageScore: scoreFor({ ...candidate, rarity: detectedCar.rarity }),
+        photo,
+        location,
+        collectedAt,
+        color: detectedCar.color,
+        confidenceScore: detectedCar.confidenceScore
+      };
+
+      const existingCar = state.cars.find((item) => carIdentity(item) === carIdentity(car));
+      const duplicateScraps = existingCar ? DUPLICATE_SCRAPS[car.rarity] || 0 : 0;
+      const wasAtTicketCap = state.tickets === MAX_TICKETS;
+      if (!existingCar) state.cars.push(car);
+      state.tickets -= 1;
+      if (wasAtTicketCap) state.lastTicketAt = collectedAt;
+      state.scraps += SCAN_SCRAPS[car.rarity] + duplicateScraps;
+      const earnedXp = 45 + RARITY_INDEX[car.rarity] * 22;
+      state.xp += earnedXp;
+      saveState();
+      $('scanLoading').classList.remove('show');
+      $('cameraStatus').textContent = 'SCAN COMPLETE · FILED';
+      scanning = false;
+      renderAll();
+      const rewardText = `+${SCAN_SCRAPS[car.rarity]} scraps${duplicateScraps ? ` · +${duplicateScraps} duplicate salvage` : ''}`;
+      showToast(existingCar ? `${car.make} ${car.model} duplicate · ${rewardText}` : `${car.year} ${car.make} ${car.model} logged · ${rewardText} · +${earnedXp} XP`);
+      showCarDetails(existingCar || car);
+    } catch (error) {
+      console.error('OpenAI scan failed:', error);
+      $('scanLoading').classList.remove('show');
+      $('cameraStatus').textContent = 'SCAN FAILED';
+      scanning = false;
+      scanButton.disabled = !cameraStream || state.tickets <= 0 || scanning;
+      showToast('Vehicle scan failed. Check your OpenAI API key and try again.');
+    }
   }
 
   function showCarDetails(car) {
