@@ -16,7 +16,7 @@ Then open `http://127.0.0.1:4173`.
 
 - Camera-only capture with each scout photo saved as its garage card image.
 - 15 scan tickets initially; one refills every 15 minutes, with the refill timer persisted between visits.
-- Simulated car recognition from a local sample catalog. Make, model, and year are selected locally; this is not an AI vision model.
+- Simulated car recognition from a local sample catalog. A Hugging Face-powered scanner can be enabled by storing a HF_API_TOKEN in the browser for live vehicle identification.
 - Rarity tiers derived from the catalog's rarity index, horsepower, and top speed.
 - Scraps for each scan (50 Common, 100 Uncommon, 200 Rare, 350 Exotic, 600 Legendary), plus extra salvage when a duplicate model is found.
 - A once-per-local-day free pack with a weighted 100–1,000 scrap reward.
@@ -26,4 +26,4 @@ Then open `http://127.0.0.1:4173`.
 - Daily and Sunday-reset weekly quests that award XP toward collector levels.
 - Local browser storage; there is no account, backend, or shared multiplayer state.
 
-Camera and geolocation access are optional browser permissions; without camera access, scanning is unavailable. Catalog specifications and leaderboard rivals are demo data, not authoritative vehicle records.
+Camera and geolocation access are optional browser permissions; without camera access, scanning is unavailable. To use live Hugging Face recognition in the browser, set localStorage.setItem('HF_API_TOKEN', 'your_token') or window.HF_API_TOKEN = 'your_token'. Catalog specifications and leaderboard rivals are demo data, not authoritative vehicle records.

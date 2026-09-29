@@ -477,92 +477,78 @@
     if (!base64Image) return '';
     const trimmed = String(base64Image).trim();
     if (trimmed.startsWith('data:image')) {
-      return trimmed;
+      return trimmed.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
     }
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
-    }
-    return `data:image/jpeg;base64,${trimmed.replace(/^data:image\/\w+;base64,/, '')}`;
+    return trimmed.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      if (!(file instanceof Blob)) {
+        reject(new Error('A valid image file is required.'));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Unable to read the selected image file.'));
+      reader.readAsDataURL(file);
+    });
   }
 
   async function scanCarImage(base64Image) {
-    const apiKey = window.OPENAI_API_KEY || localStorage.getItem('OPENAI_API_KEY');
+    const apiKey = window.HF_API_TOKEN || localStorage.getItem('HF_API_TOKEN');
     if (!apiKey) {
-      return { isCar: false, error: 'Missing OpenAI API key. Set window.OPENAI_API_KEY or localStorage.OPENAI_API_KEY.' };
+      return { isCar: false, error: 'Missing Hugging Face API token. Set window.HF_API_TOKEN or localStorage.HF_API_TOKEN.' };
     }
 
-    const formattedImage = normalizeBase64Image(base64Image);
-    if (!formattedImage) {
+    const rawBase64 = normalizeBase64Image(base64Image);
+    if (!rawBase64) {
       return { isCar: false, error: 'No image data was provided for scanning.' };
     }
 
-    console.log('Image payload size:', formattedImage.length);
+    const binary = atob(rawBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
 
-    const systemPrompt = [
-      'You are an expert vehicle identification assistant.',
-      'Analyze the image carefully.',
-      'If a vehicle is visible—even partially, at an angle, or in imperfect lighting—identify it.',
-      'Only set isCar to false if the image contains no vehicle whatsoever, such as text, furniture, people, or a blank background.',
-      'Return JSON only with this exact schema:',
-      '{"isCar": true, "make": "", "model": "", "estimatedYear": 2020, "rarity": "Common", "confidenceScore": 88, "reasoning": ""}',
-      'Allowed rarity values are only Common, Rare, or Exotic.',
-      'confidenceScore must be a number between 0 and 100.',
-      'Include reasoning explaining the visual features used for identification.',
-      'Do not include markdown, commentary, or extra keys.'
-    ].join(' ');
+    console.log('Image payload size:', rawBase64.length);
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const url = 'https://router.huggingface.co/hf-inference/models/google/vit-base-patch16-224';
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/octet-stream'
       },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: 'Identify the vehicle shown in this image.' },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: formattedImage
-                }
-              }
-            ]
-          }
-        ]
-      })
+      body: bytes
     });
 
     if (!response.ok) {
       const errorPayload = await response.text();
-      throw new Error(`OpenAI Vision request failed: ${response.status} ${errorPayload}`);
+      throw new Error(`Hugging Face request failed: ${response.status} ${errorPayload}`);
     }
 
     const data = await response.json();
     console.log('Vision API Response:', data);
 
-    const rawText = data.choices?.[0]?.message?.content || '{}';
-    const parsed = JSON.parse(rawText);
+    const predictions = Array.isArray(data) ? data : data?.[0] ? data : [];
+    const bestPrediction = Array.isArray(predictions) && predictions.length ? predictions.reduce((best, candidate) => Number(candidate.score) > Number(best.score) ? candidate : best) : null;
 
-    if (!parsed || parsed.isCar === false) {
-      return { isCar: false };
+    const detectedLabel = bestPrediction?.label || 'unknown';
+    const confidenceScore = Number(bestPrediction?.score || 0) * 100;
+    const normalizedLabel = String(detectedLabel).toLowerCase();
+    const isCar = normalizedLabel.includes('car') || normalizedLabel.includes('vehicle') || normalizedLabel.includes('truck') || normalizedLabel.includes('bus') || normalizedLabel.includes('sedan') || normalizedLabel.includes('coupe') || normalizedLabel.includes('suv') || normalizedLabel.includes('hatchback') || normalizedLabel.includes('van');
+
+    if (!isCar) {
+      return { isCar: false, detectedLabel, confidenceScore, reasoning: `Model classified the image as ${detectedLabel}.` };
     }
 
     return {
       isCar: true,
-      make: String(parsed.make || 'Unknown').trim(),
-      model: String(parsed.model || 'Unknown').trim(),
-      estimatedYear: Number(parsed.estimatedYear || new Date().getFullYear()),
-      rarity: ['Common', 'Rare', 'Exotic'].includes(parsed.rarity) ? parsed.rarity : 'Common',
-      confidenceScore: Number(parsed.confidenceScore || 50),
-      reasoning: String(parsed.reasoning || 'Vehicle detected using visual cues.').trim(),
-      detectedColor: String(parsed.detectedColor || 'Unknown').trim()
+      detectedLabel,
+      confidenceScore,
+      reasoning: `Detected vehicle label: ${detectedLabel} with ${(confidenceScore || 0).toFixed(1)}% confidence.`
     };
   }
 
@@ -591,12 +577,15 @@
 
     try {
       const detection = await scanCarImage(photo);
-      if (!detection || detection.isCar === false) {
+      const confidence = Number(detection?.confidenceScore || 0);
+      const shouldFallback = !detection || detection.isCar === false || confidence < 30;
+
+      if (shouldFallback) {
         $('scanLoading').classList.remove('show');
-        $('cameraStatus').textContent = 'NO VEHICLE DETECTED';
+        $('cameraStatus').textContent = 'IDENTIFICATION UNCERTAIN';
         scanning = false;
         scanButton.disabled = !cameraStream || state.tickets <= 0 || scanning;
-        showToast('No car was detected in the image. Try framing a clearer vehicle.');
+        showManualVehicleFallback(photo, detection?.reasoning || 'The image was unclear. Please confirm the vehicle details.');
         return;
       }
 
@@ -605,10 +594,10 @@
         model: detection.model || 'Unknown',
         year: Number(detection.estimatedYear || new Date().getFullYear()),
         rarity: detection.rarity || 'Common',
-        confidenceScore: detection.confidenceScore || 0.5,
+        confidenceScore: detection.confidenceScore || 50,
         color: detection.detectedColor || 'Unknown',
-        horsepower: Math.max(80, Math.min(1000, Math.round((detection.confidenceScore || 0.5) * 500 + 120))),
-        topSpeed: Math.max(90, Math.min(230, Math.round((detection.confidenceScore || 0.5) * 120 + 80))),
+        horsepower: Math.max(80, Math.min(1000, Math.round((confidence / 100) * 500 + 120))),
+        topSpeed: Math.max(90, Math.min(230, Math.round((confidence / 100) * 120 + 80))),
         rarityScore: detection.rarity === 'Exotic' ? 92 : detection.rarity === 'Rare' ? 68 : 38
       };
 
@@ -651,13 +640,81 @@
       showToast(existingCar ? `${car.make} ${car.model} duplicate · ${rewardText}` : `${car.year} ${car.make} ${car.model} logged · ${rewardText} · +${earnedXp} XP`);
       showCarDetails(existingCar || car);
     } catch (error) {
-      console.error('OpenAI scan failed:', error);
+      console.error('Gemini scan failed:', error);
       $('scanLoading').classList.remove('show');
-      $('cameraStatus').textContent = 'SCAN FAILED';
+      $('cameraStatus').textContent = 'IDENTIFICATION UNCERTAIN';
       scanning = false;
       scanButton.disabled = !cameraStream || state.tickets <= 0 || scanning;
-      showToast('Vehicle scan failed. Check your OpenAI API key and try again.');
+      showManualVehicleFallback(photo, 'The image could not be processed reliably. Please confirm the vehicle details manually.');
     }
+  }
+
+  function showManualVehicleFallback(photoData = '', reason = 'Vehicle identification was uncertain. Please confirm the details.') {
+    $('dialogContent').innerHTML = `
+      <div class="dialog-body">
+        <div class="dialog-rarity">
+          <span><i class="rarity-dot Common"></i>MANUAL CONFIRMATION</span>
+          <strong>HELP US VERIFY</strong>
+        </div>
+        <p class="dialog-location">${escapeHtml(reason)}</p>
+        <form data-manual-car-form>
+          <div class="manual-form-grid">
+            <label>
+              <span>Make</span>
+              <input name="make" type="text" placeholder="Toyota" required />
+            </label>
+            <label>
+              <span>Model</span>
+              <input name="model" type="text" placeholder="Corolla" required />
+            </label>
+            <label>
+              <span>Year</span>
+              <input name="year" type="number" min="1900" max="2035" value="${new Date().getFullYear()}" required />
+            </label>
+            <label>
+              <span>Color</span>
+              <input name="color" type="text" placeholder="Silver" />
+            </label>
+          </div>
+          <input type="hidden" name="photo" value="${escapeHtml(photoData)}" />
+          <button class="button button-primary" type="submit">Confirm vehicle</button>
+        </form>
+      </div>
+    `;
+    $('carDialog').showModal();
+  }
+
+  function addManualVehicleFromForm(formData) {
+    const make = String(formData.get('make') || '').trim();
+    const model = String(formData.get('model') || '').trim();
+    const year = Number(formData.get('year') || new Date().getFullYear());
+    const color = String(formData.get('color') || 'Unknown').trim();
+    const photo = String(formData.get('photo') || '');
+    if (!make || !model) {
+      showToast('Please enter both the make and model to confirm the vehicle.');
+      return;
+    }
+    const fallbackCar = {
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      make,
+      model,
+      year,
+      rarity: 'Common',
+      garageScore: scoreFor({ rarity: 'Common', horsepower: 180, topSpeed: 120 }),
+      photo: photo || 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=900&q=80',
+      location: 'Manual confirm',
+      collectedAt: Date.now(),
+      horsepower: 180,
+      topSpeed: 120,
+      rarityScore: 38,
+      color
+    };
+    state.cars.push(fallbackCar);
+    saveState();
+    renderAll();
+    $('carDialog').close();
+    showToast(`${make} ${model} added to your garage.`);
+    showCarDetails(fallbackCar);
   }
 
   function showCarDetails(car) {
@@ -729,6 +786,12 @@
       const car = state.cars.find((item) => item.id === card.dataset.carId);
       if (car) showCarDetails(car);
     }
+  });
+  document.addEventListener('submit', (event) => {
+    const form = event.target.closest('[data-manual-car-form]');
+    if (!form) return;
+    event.preventDefault();
+    addManualVehicleFromForm(new FormData(form));
   });
   document.addEventListener('keydown', (event) => {
     if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-car-id]')) {
